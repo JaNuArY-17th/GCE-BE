@@ -130,6 +130,10 @@ export class VotesService {
       throw new NotFoundException('Không tìm thấy người dùng với MSSV này.');
     }
 
+    if (voter.hasVoted) {
+      throw new ConflictException('MSSV này đã bỏ phiếu.');
+    }
+
     const payload = await this.verifyGoogleToken(idToken);
     const tokenEmail = payload?.email ? String(payload.email).trim().toLowerCase() : '';
     const voterEmail = voter.email ? String(voter.email).trim().toLowerCase() : '';
