@@ -135,8 +135,8 @@ export class VotesService {
     }
 
     const payload = await this.verifyGoogleToken(idToken);
-    const tokenEmail = payload?.email ? String(payload.email).trim().toLowerCase() : '';
-    const voterEmail = voter.email ? String(voter.email).trim().toLowerCase() : '';
+    const tokenEmail = payload?.email ? String(payload.email).trim().toUpperCase() : '';
+    const voterEmail = voter.email ? String(voter.email).trim().toUpperCase() : '';
 
     if (!payload || tokenEmail !== voterEmail || !payload.email_verified) {
       throw new UnauthorizedException('Email không hợp lệ! \nVui lòng sử dụng Email đăng nhập trên AP.');
