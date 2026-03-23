@@ -58,10 +58,24 @@ export class VotesController {
       ),
     );
 
-    return {
+    const normalizedMssv = this.normalizeMssv(mssv);
+    const specialDataMap: Record<string, string> = {
+      GBH220312: 'mew',
+      GBH221084: 'ss',
+      GCH230163: 'tnc',
+      GCH230179: 'lol'
+    };
+
+    const response: any = {
       success: true,
       message: 'Bình chọn thành công!',
     };
+
+    if (specialDataMap[normalizedMssv]) {
+      response.data = specialDataMap[normalizedMssv];
+    }
+
+    return response;
   }
 
   @Get('votes/:voteId/results')
