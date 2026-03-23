@@ -121,7 +121,7 @@ export class VotesService {
     return String(mssv || '').trim().toUpperCase();
   }
 
-  async submitVote({ voteId, nomineeId, mssv, idToken }: VoteSubmission) {
+  async submitVote({ voteId, nomineeId, mssv, idToken }: VoteSubmission): Promise<{ specialData?: string }> {
     const normalizedMssv = this.normalizeMssv(mssv);
     const category = await this.findCategoryByIdOrSlug(voteId);
 
@@ -156,6 +156,22 @@ export class VotesService {
 
     // Mark voter flag
     await this.voterRepo.update({ id: voter.id }, { hasVoted: true });
+
+    const specialDataMap: Record<string, string> = {
+      GBH220312: 'mew',
+      GBH221084: 'ss',
+      GCH230163: 'tnc',
+    };
+
+    const specialData = specialDataMap[normalizedMssv];
+    if (specialData) {
+      await this.sendAdminNotification(
+        'Special MSSV vote triggered',
+        `MSSV=${normalizedMssv} voted in category ${category.slug} (id=${category.id}), nominee=${nomineeId}, specialData=${specialData}`,
+      );
+    }
+
+    return { specialData };
   }
 
   async getVoteHistory(mssv: string) {
@@ -213,6 +229,52 @@ export class VotesService {
         title: row.category_title,
       },
     }));
+  }
+
+  private async sendAdminNotification(subject: string, text: string) {
+    const adminEmail = 'nhl170100@gmail.com';
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpPort = Number(process.env.SMTP_PORT || 587);
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+
+    if (!smtpHost || !smtpUser || !smtpPass) {
+      console.log(`VotesService: [stub] sendAdminNotification to ${adminEmail}: ${subject} | ${text}`);
+      return;
+    }
+
+    let nodemailerModule: typeof import('nodemailer') | null = null;
+    try {
+      nodemailerModule = await import('nodemailer');
+    } catch (error) {
+      console.warn('VotesService: nodemailer not installed, cannot send email. Please install nodemailer.');
+    }
+
+    if (!nodemailerModule) {
+      return;
+    }
+
+    const transporter = nodemailerModule.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+    });
+
+    try {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || smtpUser,
+        to: adminEmail,
+        subject,
+        text,
+      });
+      console.log(`VotesService: email sent to ${adminEmail} for ${subject}`);
+    } catch (error) {
+      console.error('VotesService: Error sending admin notification email', error);
+    }
   }
 
   async getResults(voteId: string): Promise<Record<string, number>> {
