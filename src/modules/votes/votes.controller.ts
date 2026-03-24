@@ -55,26 +55,15 @@ export class VotesController {
       throw new NotFoundException('Missing vote choices');
     }
 
-    const results = await Promise.all(
-      choices.map((choice) =>
-        this.votesService.submitVote({
-          voteId: choice.voteId,
-          nomineeId: choice.nomineeId,
-          mssv,
-          idToken: body.idToken,
-        }),
-      ),
-    );
-
-    const specialData = results.find((r) => r?.specialData)?.specialData;
+    const result = await this.votesService.submitAllVotes(mssv, body.idToken, choices);
 
     const response: any = {
       success: true,
       message: 'Bình chọn thành công!',
     };
 
-    if (specialData) {
-      response.data = specialData;
+    if (result?.specialData) {
+      response.data = result.specialData;
     }
 
     return response;

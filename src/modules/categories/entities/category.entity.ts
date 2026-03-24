@@ -23,4 +23,7 @@ export class Category {
 
   @Column({ type: 'varchar', length: 50, default: 'other' })
   type!: CategoryType;
+
+  @Column({ type: 'int', default: 1 })
+  maxVotes!: number;
 }

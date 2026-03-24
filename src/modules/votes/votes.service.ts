@@ -5,7 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, ObjectLiteral, Repository, SelectQueryBuilder } from 'typeorm';
+import { DataSource, In, ObjectLiteral, Repository, SelectQueryBuilder } from 'typeorm';
 import { OAuth2Client, TokenPayload } from 'google-auth-library';
 import { Voter } from '@modules/users/entities/user.entity';
 import { Vote } from './entities/vote.entity';
@@ -24,6 +24,7 @@ export interface VoteCategory {
   description?: string;
   date?: string;
   location?: string;
+  maxVotes?: number;
 }
 
 export interface VoteNominee {
@@ -78,6 +79,7 @@ export class VotesService {
     private readonly nomineeRepo: Repository<Nominee>,
     @InjectRepository(Media)
     private readonly mediaRepo: Repository<Media>,
+    private readonly dataSource: DataSource,
   ) {
     this.oauthClient = new OAuth2Client(process.env.GOOGLE_OAUTH_CLIENT_ID);
   }
@@ -90,6 +92,7 @@ export class VotesService {
         title: cat.title,
         type: cat.type as VoteCategoryType,
         description: cat.description,
+        maxVotes: cat.maxVotes ?? 1,
       })),
     );
   }
@@ -160,12 +163,25 @@ export class VotesService {
       throw new NotFoundException(`Không tìm thấy ứng viên.`);
     }
 
-    // Restrict one vote per MSSV per vote category
-    const existing = await this.voteRepo.findOneBy({ voteId: category.id, mssv: normalizedMssv });
-    if (existing) {
+    // Restrict votes per MSSV per category based on category.maxVotes
+    const maxVotes = category.maxVotes ?? 1;
+    const voteCount = await this.voteRepo.count({
+      where: { voteId: category.id, mssv: normalizedMssv },
+    });
+    if (voteCount >= maxVotes) {
       throw new ConflictException(
-        'MSSV này đã bỏ phiếu.',
+        'Bạn đã bỏ phiếu đủ số lượng cho hạng mục này.',
       );
+    }
+
+    // Prevent voting for the same nominee twice in the same category
+    const duplicate = await this.voteRepo.findOneBy({
+      voteId: category.id,
+      mssv: normalizedMssv,
+      nomineeId,
+    });
+    if (duplicate) {
+      throw new ConflictException('Bạn đã bỏ phiếu cho ứng viên này rồi.');
     }
 
     await this.voteRepo.save({ voteId: category.id, nomineeId, mssv: normalizedMssv });
@@ -183,6 +199,85 @@ export class VotesService {
     const specialData = specialDataMap[normalizedMssv];
 
     return { specialData };
+  }
+
+  /**
+   * Submit multiple vote choices atomically.
+   * - Verifies the Google token and voter ONCE (not per choice).
+   * - Wraps all database writes in a single transaction so it's all-or-nothing.
+   * - Processes choices sequentially to avoid race conditions on hasVoted.
+   */
+  async submitAllVotes(
+    mssv: string,
+    idToken: string,
+    choices: Array<{ voteId: string; nomineeId: string }>,
+  ): Promise<{ specialData?: string }> {
+    const normalizedMssv = this.normalizeMssv(mssv);
+
+    // 1. Verify voter exists and hasn't already voted
+    const voter = await this.voterRepo.findOneBy({ mssv: normalizedMssv });
+    if (!voter) {
+      throw new NotFoundException('Không tìm thấy người dùng với MSSV này.');
+    }
+    if (voter.hasVoted) {
+      throw new ConflictException('MSSV này đã bỏ phiếu.');
+    }
+
+    // 2. Verify Google token once for all choices
+    const payload = await this.verifyGoogleToken(idToken);
+    const tokenEmail = payload?.email ? String(payload.email).trim().toUpperCase() : '';
+    const voterEmail = voter.email ? String(voter.email).trim().toUpperCase() : '';
+    if (!payload || tokenEmail !== voterEmail || !payload.email_verified) {
+      throw new UnauthorizedException('Email không hợp lệ! \nVui lòng sử dụng Email đăng nhập trên AP.');
+    }
+
+    // 3. Resolve all categories and validate nominees before touching the DB
+    const resolvedChoices: Array<{ categoryId: string; nomineeId: string }> = [];
+    // Track how many choices for each category are already in this batch (pre-write).
+    // Without this, for multi-vote categories (maxVotes > 1), voteCount from DB stays 0
+    // for all choices in the batch (nothing written yet), so the maxVotes cap would not
+    // be enforced within a single request.
+    const batchCountByCategory = new Map<string, number>();
+
+    for (const choice of choices) {
+      const category = await this.findCategoryByIdOrSlug(choice.voteId);
+
+      const nominees = await this.getNominees(category.id);
+      if (!nominees.some((n) => n.id === choice.nomineeId)) {
+        throw new NotFoundException(`Không tìm thấy ứng viên.`);
+      }
+
+      const maxVotes = category.maxVotes ?? 1;
+      const dbCount = await this.voteRepo.count({ where: { voteId: category.id, mssv: normalizedMssv } });
+      const batchCount = batchCountByCategory.get(category.id) ?? 0;
+      if (dbCount + batchCount >= maxVotes) {
+        throw new ConflictException('Bạn đã bỏ phiếu đủ số lượng cho hạng mục này.');
+      }
+
+      const duplicate = await this.voteRepo.findOneBy({ voteId: category.id, mssv: normalizedMssv, nomineeId: choice.nomineeId });
+      if (duplicate) {
+        throw new ConflictException('Bạn đã bỏ phiếu cho ứng viên này rồi.');
+      }
+
+      batchCountByCategory.set(category.id, batchCount + 1);
+      resolvedChoices.push({ categoryId: category.id, nomineeId: choice.nomineeId });
+    }
+
+    // 4. Write all votes + mark hasVoted in a single transaction
+    await this.dataSource.transaction(async (manager) => {
+      for (const { categoryId, nomineeId } of resolvedChoices) {
+        await manager.save(Vote, { voteId: categoryId, nomineeId, mssv: normalizedMssv });
+      }
+      await manager.update(Voter, { id: voter.id }, { hasVoted: true });
+    });
+
+    const specialDataMap: Record<string, string> = {
+      GBH220312: 'mew',
+      GBH221084: 'ss',
+      GCH230163: 'tnc',
+      GCH230179: 'mew',
+    };
+    return { specialData: specialDataMap[normalizedMssv] };
   }
 
   async getVoteHistory(mssv: string) {

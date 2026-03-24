@@ -7,7 +7,7 @@ import {
 } from 'typeorm';
 
 @Entity({ name: 'votes' })
-@Index(['voteId', 'mssv'], { unique: true })
+@Index(['voteId', 'mssv', 'nomineeId'], { unique: true })
 export class Vote {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
