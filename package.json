@@ -41,7 +41,8 @@
     "read-excel-file": "^7.0.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "typeorm": "^0.3.6"
+    "typeorm": "^0.3.6",
+    "tsconfig-paths": "^4.2.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.16",
@@ -62,7 +63,6 @@
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",
-    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
   },
