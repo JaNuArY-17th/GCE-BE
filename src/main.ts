@@ -51,12 +51,16 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   // Open CORS for all origins (temporary for diagnosis)
-  app.setGlobalPrefix('api');
   app.enableCors({
-    origin: ['https://www.greenwich-club-award.com', 'https://gca-fe.vercel.app'],
+    origin: true,
     credentials: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    allowedHeaders: 'Content-Type, Accept, Authorization',
   });
-  await app.listen(3000, '127.0.0.1'); // hoặc 0.0.0.0 nếu cần
+
+  const port = process.env.PORT ?? 3000;
+  // QUAN TRỌNG: Thêm '0.0.0.0' vào đây
+  await app.listen(port, '0.0.0.0');
 }
 
 bootstrap();
