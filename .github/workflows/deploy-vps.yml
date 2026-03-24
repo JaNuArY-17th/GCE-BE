@@ -27,7 +27,8 @@ jobs:
 
       - name: Archive source for deployment
         run: |
-          tar --exclude=node_modules --exclude=.git --exclude="deploy.tar.gz" -czf deploy.tar.gz .
+          # Nếu repo đang thay đổi trong khi tar, sẽ không fail nếu file bị thay đổi
+          tar --warning=no-file-changed --ignore-failed-read --exclude=node_modules --exclude=.git --exclude="deploy.tar.gz" -czf deploy.tar.gz .
 
       - name: Copy archive to VPS via SCP
         uses: appleboy/scp-action@v0.1.7
