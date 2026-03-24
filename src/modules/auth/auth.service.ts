@@ -15,7 +15,7 @@ export class AuthService {
   private readonly adminPassword = process.env.ADMIN_PASSWORD;
   private readonly jwtSecret: Secret = process.env.JWT_SECRET ?? 'dev-secret';
   // Admin access token should not expire
-  private readonly jwtExpiresIn: StringValue | number = 'never';
+  private readonly jwtExpiresIn: StringValue | number | 'never' = 'never';
   private readonly refreshTokenExpiresIn: StringValue | number =
     (process.env.REFRESH_TOKEN_EXPIRES_IN as StringValue) ??
     ('7d' as StringValue);
