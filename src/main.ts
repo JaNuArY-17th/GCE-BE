@@ -50,20 +50,9 @@ async function bootstrap() {
   // Keep API routes behind a common prefix to align with frontend expectations
   app.setGlobalPrefix('api');
 
-  // Allow production frontend and local development for CORS
+  // Open CORS for all origins (temporary for diagnosis)
   app.enableCors({
-    origin: (origin, callback) => {
-      const allowedOrigins = [
-        'https://www.greenwich-club-award.com',
-        'http://localhost:5173',
-        'http://localhost:3000',
-      ];
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('CORS policy: This origin is not allowed')); 
-      }
-    },
+    origin: true,
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     allowedHeaders: 'Content-Type, Accept, Authorization',
