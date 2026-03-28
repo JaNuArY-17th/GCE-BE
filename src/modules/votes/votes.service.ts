@@ -137,6 +137,10 @@ export class VotesService {
   }
 
   async submitVote({ voteId, nomineeId, mssv, idToken }: VoteSubmission): Promise<{ specialData?: string }> {
+    if (!this.isVotingOpen()) {
+      throw new ConflictException('Vòng bình chọn đã kết thúc.');
+    }
+
     const normalizedMssv = this.normalizeMssv(mssv);
     const category = await this.findCategoryByIdOrSlug(voteId);
 
@@ -212,6 +216,10 @@ export class VotesService {
     idToken: string,
     choices: Array<{ voteId: string; nomineeId: string }>,
   ): Promise<{ specialData?: string }> {
+    if (!this.isVotingOpen()) {
+      throw new ConflictException('Vòng bình chọn đã kết thúc.');
+    }
+
     const normalizedMssv = this.normalizeMssv(mssv);
 
     // 1. Verify voter exists and hasn't already voted
@@ -531,18 +539,22 @@ export class VotesService {
 
   /**
    * Return true when current date is within the allowed voting window.
-   * Not used by default, but can be hooked into controllers as needed.
+   * Deadline: end of day 2026-03-28 (23:59:59 ICT = 16:59:59 UTC).
+   * Can be overridden via VOTE_DATE_START / VOTE_DATE_END env vars.
    */
   isVotingOpen(): boolean {
     const start = process.env.VOTE_DATE_START
       ? new Date(process.env.VOTE_DATE_START)
       : null;
+
+    // Default deadline: end of 2026-03-28 in ICT (UTC+7) = 2026-03-28T16:59:59.999Z
+    const defaultEnd = new Date('2026-03-28T16:59:59.999Z');
     const end = process.env.VOTE_DATE_END
       ? new Date(process.env.VOTE_DATE_END)
-      : null;
+      : defaultEnd;
+
     const now = new Date();
 
-    if (!start && !end) return true;
     if (start && now < start) return false;
     if (end && now > end) return false;
     return true;
